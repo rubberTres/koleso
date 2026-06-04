@@ -10,3 +10,106 @@ datasource db {
   provider = "postgresql"
 }
 
+model Car {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  brand    String
+  model    String
+  year     Int?
+  bodyType String?
+
+  fittings CarFitting[]
+  photos   Photo[]
+}
+
+model CarFitting {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  car   Car    @relation(fields: [carId], references: [id], onDelete: Cascade)
+  carId String
+
+  wheelSize   WheelSize
+  wheelWidth  WheelWidth?
+  et          Int?
+  tireWidth   TireWidth?
+  tireProfile TireProfile?
+
+  @@index([carId])
+}
+
+model Photo {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  url      String
+  publicId String
+  width    Int?
+  height   Int?
+
+  car   Car    @relation(fields: [carId], references: [id], onDelete: Cascade)
+  carId String
+
+  @@index([carId])
+}
+
+enum WheelSize {
+  R_15
+  R_16
+  R_17
+  R_18
+  R_19
+  R_20
+  R_21
+  R_22
+}
+
+enum WheelWidth {
+  W_6_5
+  W_7
+  W_7_5
+  W_8
+  W_8_5
+  W_9
+  W_9_5
+  W_10
+  W_10_5
+  W_11
+  W_11_5
+  W_12
+}
+
+enum TireWidth {
+  T_175
+  T_185
+  T_195
+  T_205
+  T_215
+  T_225
+  T_235
+  T_245
+  T_255
+  T_265
+  T_275
+  T_285
+  T_295
+  T_305
+  T_315
+  T_325
+}
+
+enum TireProfile {
+  P_25
+  P_30
+  P_35
+  P_40
+  P_45
+  P_50
+  P_55
+  P_60
+  P_65
+  P_70
+}
