@@ -42,3 +42,7 @@ yarn-error.log*
 next-env.d.ts
 
 /lib/generated/prisma
+
+# clerk-installed agent skill artifacts (per-machine, like node_modules)
+.agents/
+skills-lock.json

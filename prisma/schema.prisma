@@ -1,5 +1,5 @@
 // Prisma schema — https://pris.ly/d/prisma-schema
-// Define models below. After editing, run: pnpm prisma migrate dev --name <description>
+// After editing, run: pnpm prisma migrate dev --name <description>
 
 generator client {
   provider = "prisma-client"
@@ -10,27 +10,62 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Clerk is the source of truth for auth. We mirror minimal user data here
+  // so we have a FK target for Car.userId and a place to store role.
+  clerkId  String  @unique
+  email    String? @unique
+  name     String?
+  imageUrl String?
+
+  role Role @default(USER)
+
+  cars Car[]
+}
+
+model CarMake {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name String @unique
+
+  models CarModel[]
+}
+
+model CarModel {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name String
+
+  make   CarMake @relation(fields: [makeId], references: [id], onDelete: Cascade)
+  makeId String
+
+  cars Car[]
+
+  @@unique([makeId, name])
+  @@index([makeId])
+}
+
 model Car {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  brand    String
-  model    String
+  owner  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  model   CarModel @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  modelId String
+
   year     Int?
-  bodyType String?
-
-  fittings CarFitting[]
-  photos   Photo[]
-}
-
-model CarFitting {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  car   Car    @relation(fields: [carId], references: [id], onDelete: Cascade)
-  carId String
+  bodyType BodyType?
 
   wheelSize   WheelSize
   wheelWidth  WheelWidth?
@@ -38,7 +73,11 @@ model CarFitting {
   tireWidth   TireWidth?
   tireProfile TireProfile?
 
-  @@index([carId])
+  photos Photo[]
+
+  @@index([userId])
+  @@index([modelId])
+  @@index([wheelSize])
 }
 
 model Photo {
@@ -54,6 +93,22 @@ model Photo {
   carId String
 
   @@index([carId])
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum BodyType {
+  SEDAN
+  COUPE
+  HATCHBACK
+  WAGON
+  SUV
+  PICKUP
+  CONVERTIBLE
+  VAN
 }
 
 enum WheelSize {
