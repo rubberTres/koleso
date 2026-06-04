@@ -1,0 +1,9 @@
+node_modules
+.next
+out
+build
+dist
+coverage
+pnpm-lock.yaml
+public
+next-env.d.ts
