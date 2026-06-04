@@ -45,7 +45,8 @@ app/page.tsx (server)
 - `lib/` is **pure math**, no React. `wheel-presets.ts` defines `WheelSpec` / `WheelCalc` and the offset math (`effectiveOffset = et - spacer`, outer/inner edges from rim half-width). `tire-calc.ts` does sidewall/overall-diameter math and the rim-fit verdict ("stretch", "bulge"). `fender-config.ts` exposes the fender-from-base-outer clearance constant. When adding a calculation, add it here first, then consume it.
 - `app/components/*-view.tsx` are SVG visualizations (`FrontView`, `TopView`). They take already-computed `WheelCalc` / `TireCalc` as props — they should never call the calc functions themselves. Coordinates are in millimeters and the viewBox is derived from wheel + fender geometry.
 - `app/calculator.tsx` is the only place that owns state and wires inputs → calc → views/verdicts.
-- `prisma/schema.prisma` is the **source of truth for DB models**. `lib/generated/prisma/` is generated output (gitignored — never edit by hand, never import directly). The only DB entrypoint is `lib/prisma.ts`, which exports a `PrismaClient` singleton (HMR-safe via `globalThis`). Import as `import { prisma } from "@/lib/prisma"`. **Server-only** — do not import from `"use client"` components.
+- `prisma/schema.prisma` is the **source of truth for DB models**. `lib/generated/prisma/` is generated output (gitignored — never edit by hand, never import directly). The only DB entrypoint is `lib/prisma.ts`, which exports a `PrismaClient` singleton (HMR-safe via `globalThis`). Import as `import { prisma } from "@/lib/prisma"`. **Server-only** (enforced via `server-only` package) — do not import from `"use client"` components.
+- `lib/storage.ts` is the only entry to **Cloudflare R2** (S3-compatible object storage for photos). Exports `getUploadUrl(key, contentType)` for presigned PUT URLs (client uploads directly to R2, bypassing the Next.js server), `getPublicUrl(key)` for the public CDN URL, and `deleteObject(key)`. **Server-only**. Keys are caller-defined (e.g. `cars/<carId>/<cuid>.jpg`). Browser uploads need CORS configured on the bucket — not done yet, configure when wiring up the upload UI.
 
 **Conventions worth preserving:**
 
@@ -55,6 +56,7 @@ app/page.tsx (server)
 - Path alias `@/*` maps to the repo root (e.g. `@/lib/tire-calc`).
 - Prettier: 100 col, double quotes, semis, trailing commas, `prettier-plugin-tailwindcss` sorts class names — let it.
 - `.env` holds `DATABASE_URL` for both Next.js runtime and the Prisma CLI (Prisma 7 loads it via `dotenv/config` in `prisma.config.ts`). `.env` is gitignored; the committed template is `.env.example`. For local dev the default credentials match `docker-compose.yml` (`koleso:koleso@localhost:5432/koleso`).
+- `.env` also holds R2 vars (`R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_PUBLIC_URL`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`). `next.config.ts` derives the allowed `images.remotePatterns` hostname from `R2_PUBLIC_URL` at build time — if you change the public URL (e.g. switch from dev `pub-*.r2.dev` to a custom domain), no code change needed, just env update.
 
 ## Commits
 

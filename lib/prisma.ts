@@ -1,5 +1,5 @@
-// Server-only: do not import from client components.
 // Singleton survives Next.js dev HMR — prevents connection storms.
+import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
 
