@@ -27,7 +27,7 @@ No test runner is configured.
 
 ## Architecture
 
-This is a wheel & tire fitment calculator for car enthusiasts (default preset is a Nissan S13). It's a single-page Next.js App Router app: a server component shell that hands a pre-computed base preset to a single client component which owns all interactive state.
+This is a **community fitment browser** — users pick a car make/model and wheel spec and see submissions by others (with photos showing how it looks). A standalone wheel & tire fitment calculator (the original `/` page) coexists as a tool.
 
 **Data flow** (one direction, no global state):
 
@@ -45,16 +45,30 @@ app/page.tsx (server)
 - `lib/` is **pure math**, no React. `wheel-presets.ts` defines `WheelSpec` / `WheelCalc` and the offset math (`effectiveOffset = et - spacer`, outer/inner edges from rim half-width). `tire-calc.ts` does sidewall/overall-diameter math and the rim-fit verdict ("stretch", "bulge"). `fender-config.ts` exposes the fender-from-base-outer clearance constant. When adding a calculation, add it here first, then consume it.
 - `app/components/*-view.tsx` are SVG visualizations (`FrontView`, `TopView`). They take already-computed `WheelCalc` / `TireCalc` as props — they should never call the calc functions themselves. Coordinates are in millimeters and the viewBox is derived from wheel + fender geometry.
 - `app/calculator.tsx` is the only place that owns state and wires inputs → calc → views/verdicts.
-- `prisma/schema.prisma` is the **source of truth for DB models**. `lib/generated/prisma/` is generated output (gitignored — never edit by hand, never import directly). The only DB entrypoint is `lib/prisma.ts`, which exports a `PrismaClient` singleton (HMR-safe via `globalThis`). Import as `import { prisma } from "@/lib/prisma"`. **Server-only** (enforced via `server-only` package) — do not import from `"use client"` components.
+- `prisma/schema.prisma` is the **source of truth for DB models**. `lib/generated/prisma/` is generated output (gitignored — never edit by hand). The only DB entrypoint is `lib/prisma.ts` (`PrismaClient` singleton, HMR-safe). Import as `import { prisma } from "@/lib/prisma"`. **Server-only** via `server-only` package.
+- **Models** (see schema for full shape): `User` (mirror of Clerk, has `clerkId @unique`, `role` enum `USER`/`ADMIN`), `CarMake`/`CarModel` (admin-curated catalog, `@@unique([makeId, name])`), `Car` (one community submission = car identity + wheel/tire spec + owner), `Photo`. Prisma 7 row types are `<Model>Model` (e.g. `UserModel`), exported from `@/lib/generated/prisma/models`. Enums are both type + value, exported from `@/lib/generated/prisma/enums`.
+- **Auth** is Clerk. Read `auth()` only from `@clerk/nextjs/server` and **always await**. `lib/auth.ts` is the only file routes import from for auth: `getCurrentUser()` does just-in-time User mirror (works without webhook), `requireUser()` / `requireAdmin()` throw `AuthError`, `withAuth(handler)` translates `AuthError` to 401/403. Webhook at `/api/webhooks/clerk` does proactive sync; `CLERK_WEBHOOK_SIGNING_SECRET` env var required (Clerk dashboard → Webhooks → Add Endpoint).
+- **`proxy.ts` is public-first** — `clerkMiddleware()` only sets up auth context, no `auth.protect()`. Each route handler enforces its own policy via the helpers above. Matcher includes `/__clerk/:path*` (required by Clerk).
 - `lib/storage.ts` is the only entry to **Cloudflare R2** (S3-compatible object storage for photos). Exports `getUploadUrl(key, contentType)` for presigned PUT URLs (client uploads directly to R2, bypassing the Next.js server), `getPublicUrl(key)` for the public CDN URL, and `deleteObject(key)`. **Server-only**. Keys are caller-defined; the upload-url route uses `cars/<carId>/<uuid>.<ext>`.
-- HTTP API lives under `app/api/`. Convention: **no Server Actions** in this repo — everything is Route Handlers (`route.ts`), even mutations. Mutations validate input by hand (no Zod yet), return JSON with `{ error }` and an appropriate status on failure. Endpoints currently in place:
-  - `GET /api/cars` — list cars with `_count` of photos/fittings
-  - `POST /api/cars` — create (`brand`, `model` required; `year`, `bodyType` optional)
-  - `GET /api/cars/[id]` — car with photos + fittings
-  - `DELETE /api/cars/[id]` — cascades to fittings + photo DB rows (does **not** clean up R2 objects — known limitation, address later via a sweep job or per-photo deletes)
-  - `POST /api/photos/upload-url` — body `{ carId, contentType }` → `{ uploadUrl, key, publicUrl }`. Client then PUTs the file to `uploadUrl` directly (5-min TTL). Allowed types: `image/jpeg`, `image/png`, `image/webp`.
-  - `POST /api/photos` — body `{ carId, key, width?, height? }` → creates the `Photo` row after the client confirms the R2 PUT succeeded.
-  - `DELETE /api/photos/[id]` — deletes from R2 then from DB.
+- HTTP API lives under `app/api/`. **No Server Actions** in this repo — everything is Route Handlers (`route.ts`). Mutations validate input by hand (no Zod yet), return `{ error }` JSON on failure. Auth policy per route:
+
+  | Route | Public | USER | Owner | ADMIN |
+  |---|:-:|:-:|:-:|:-:|
+  | `GET /api/cars` (filters: `?modelId=`, `?wheelSize=`) | ✅ | ✅ | ✅ | ✅ |
+  | `GET /api/cars/[id]` | ✅ | ✅ | ✅ | ✅ |
+  | `POST /api/cars` (creates with `userId` from session) | ❌ | ✅ | — | ✅ |
+  | `PATCH /api/cars/[id]` | ❌ | ❌ | ✅ | ✅ |
+  | `DELETE /api/cars/[id]` | ❌ | ❌ | ✅ | ✅ |
+  | `POST /api/photos/upload-url` (presigned R2 PUT, 5min TTL) | ❌ | ❌ | ✅ | ✅ |
+  | `POST /api/photos` (record after PUT) | ❌ | ❌ | ✅ | ✅ |
+  | `DELETE /api/photos/[id]` | ❌ | ❌ | ✅ | ✅ |
+  | `GET /api/makes`, `GET /api/models?makeId=` | ✅ | ✅ | ✅ | ✅ |
+  | `POST/DELETE /api/makes`, `POST/DELETE /api/models` | ❌ | ❌ | ❌ | ✅ |
+  | `POST /api/webhooks/clerk` (signed by Clerk) | ✅* | — | — | — |
+
+  *Webhook verifies its own signature via `verifyWebhook` from `@clerk/nextjs/webhooks` — public at proxy level but rejects unsigned requests at handler level.
+
+  Allowed photo content types: `image/jpeg`, `image/png`, `image/webp`. Key format: `cars/<carId>/<uuid>.<ext>`. Known gap: `DELETE /api/cars/[id]` cascades photos in DB but orphans R2 objects.
 
 **Conventions worth preserving:**
 
