@@ -46,7 +46,15 @@ app/page.tsx (server)
 - `app/components/*-view.tsx` are SVG visualizations (`FrontView`, `TopView`). They take already-computed `WheelCalc` / `TireCalc` as props — they should never call the calc functions themselves. Coordinates are in millimeters and the viewBox is derived from wheel + fender geometry.
 - `app/calculator.tsx` is the only place that owns state and wires inputs → calc → views/verdicts.
 - `prisma/schema.prisma` is the **source of truth for DB models**. `lib/generated/prisma/` is generated output (gitignored — never edit by hand, never import directly). The only DB entrypoint is `lib/prisma.ts`, which exports a `PrismaClient` singleton (HMR-safe via `globalThis`). Import as `import { prisma } from "@/lib/prisma"`. **Server-only** (enforced via `server-only` package) — do not import from `"use client"` components.
-- `lib/storage.ts` is the only entry to **Cloudflare R2** (S3-compatible object storage for photos). Exports `getUploadUrl(key, contentType)` for presigned PUT URLs (client uploads directly to R2, bypassing the Next.js server), `getPublicUrl(key)` for the public CDN URL, and `deleteObject(key)`. **Server-only**. Keys are caller-defined (e.g. `cars/<carId>/<cuid>.jpg`). Browser uploads need CORS configured on the bucket — not done yet, configure when wiring up the upload UI.
+- `lib/storage.ts` is the only entry to **Cloudflare R2** (S3-compatible object storage for photos). Exports `getUploadUrl(key, contentType)` for presigned PUT URLs (client uploads directly to R2, bypassing the Next.js server), `getPublicUrl(key)` for the public CDN URL, and `deleteObject(key)`. **Server-only**. Keys are caller-defined; the upload-url route uses `cars/<carId>/<uuid>.<ext>`.
+- HTTP API lives under `app/api/`. Convention: **no Server Actions** in this repo — everything is Route Handlers (`route.ts`), even mutations. Mutations validate input by hand (no Zod yet), return JSON with `{ error }` and an appropriate status on failure. Endpoints currently in place:
+  - `GET /api/cars` — list cars with `_count` of photos/fittings
+  - `POST /api/cars` — create (`brand`, `model` required; `year`, `bodyType` optional)
+  - `GET /api/cars/[id]` — car with photos + fittings
+  - `DELETE /api/cars/[id]` — cascades to fittings + photo DB rows (does **not** clean up R2 objects — known limitation, address later via a sweep job or per-photo deletes)
+  - `POST /api/photos/upload-url` — body `{ carId, contentType }` → `{ uploadUrl, key, publicUrl }`. Client then PUTs the file to `uploadUrl` directly (5-min TTL). Allowed types: `image/jpeg`, `image/png`, `image/webp`.
+  - `POST /api/photos` — body `{ carId, key, width?, height? }` → creates the `Photo` row after the client confirms the R2 PUT succeeded.
+  - `DELETE /api/photos/[id]` — deletes from R2 then from DB.
 
 **Conventions worth preserving:**
 
