@@ -1,0 +1,12 @@
+// Prisma schema — https://pris.ly/d/prisma-schema
+// Define models below. After editing, run: pnpm prisma migrate dev --name <description>
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+

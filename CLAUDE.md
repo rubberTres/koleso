@@ -14,6 +14,15 @@ Package manager is **pnpm** (see `pnpm-lock.yaml`, `pnpm-workspace.yaml`).
 - `pnpm lint` / `pnpm lint:fix` — ESLint (flat config, `next/core-web-vitals` + `next/typescript` + prettier)
 - `pnpm format` / `pnpm format:check` — Prettier across the repo
 
+**Database (local):**
+
+- `pnpm db:up` / `pnpm db:down` — start/stop Postgres via `docker-compose.yml`
+- `pnpm db:logs` — tail Postgres logs
+- `pnpm db:reset` — `docker compose down -v` — **wipes all data**
+- `pnpm prisma migrate dev --name <desc>` — after editing `prisma/schema.prisma`: creates a migration in `prisma/migrations/`, applies it, regenerates the client
+- `pnpm prisma studio` — GUI to inspect/edit data
+- `pnpm prisma generate` — regenerate the client (also runs automatically as `postinstall`)
+
 No test runner is configured.
 
 ## Architecture
@@ -36,6 +45,7 @@ app/page.tsx (server)
 - `lib/` is **pure math**, no React. `wheel-presets.ts` defines `WheelSpec` / `WheelCalc` and the offset math (`effectiveOffset = et - spacer`, outer/inner edges from rim half-width). `tire-calc.ts` does sidewall/overall-diameter math and the rim-fit verdict ("stretch", "bulge"). `fender-config.ts` exposes the fender-from-base-outer clearance constant. When adding a calculation, add it here first, then consume it.
 - `app/components/*-view.tsx` are SVG visualizations (`FrontView`, `TopView`). They take already-computed `WheelCalc` / `TireCalc` as props — they should never call the calc functions themselves. Coordinates are in millimeters and the viewBox is derived from wheel + fender geometry.
 - `app/calculator.tsx` is the only place that owns state and wires inputs → calc → views/verdicts.
+- `prisma/schema.prisma` is the **source of truth for DB models**. `lib/generated/prisma/` is generated output (gitignored — never edit by hand, never import directly). The only DB entrypoint is `lib/prisma.ts`, which exports a `PrismaClient` singleton (HMR-safe via `globalThis`). Import as `import { prisma } from "@/lib/prisma"`. **Server-only** — do not import from `"use client"` components.
 
 **Conventions worth preserving:**
 
@@ -44,6 +54,7 @@ app/page.tsx (server)
 - Tailwind v4 via `@tailwindcss/postcss` (no `tailwind.config`). Theme tokens come from HeroUI styles (`@import "@heroui/styles"` in `app/globals.css`) — use semantic classes like `text-muted`, `text-accent`, `text-warning`, `text-success`, `text-separator`, `text-foreground` and CSS vars like `var(--color-success)` rather than hardcoded colors.
 - Path alias `@/*` maps to the repo root (e.g. `@/lib/tire-calc`).
 - Prettier: 100 col, double quotes, semis, trailing commas, `prettier-plugin-tailwindcss` sorts class names — let it.
+- `.env` holds `DATABASE_URL` for both Next.js runtime and the Prisma CLI (Prisma 7 loads it via `dotenv/config` in `prisma.config.ts`). `.env` is gitignored; the committed template is `.env.example`. For local dev the default credentials match `docker-compose.yml` (`koleso:koleso@localhost:5432/koleso`).
 
 ## Commits
 
